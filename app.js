@@ -39,35 +39,30 @@ class Game {
 			}
 		}
         this.anims = ['Walking', 'Walking Backwards', 'Turn', 'Running', 'Pointing', 'Talking', 'Pointing Gesture'];
-        this.anims.forEach( function(anim){ options.assets.push(`${assetsPath}fbx/anims/${anim}.fbx`)});
-		options.assets.push(`${this.assetsPath}fbx/town.fbx`);
+        this.anims.forEach( function(anim){ options.assets.push(`${assetsPath}/anims/${anim}.fbx`)});
 
+        
         this.init();
         this.animate()
 
         
 
-
-        this.loadEnvironment();
-
     }
 
-    loadNextAnim(loader){
+	loadNextAnim(loader){
 		let anim = this.anims.pop();
 		const game = this;
-		loader.load( `${this.assetsPath}fbx/anims/${anim}.fbx`, function( object ){
+		loader.load( `${this.assetsPath}/anims/${anim}.fbx`, function( object ){
 			game.player.animations[anim] = object.animations[0];
 			if (game.anims.length>0){
 				game.loadNextAnim(loader);
 			}else{
 				delete game.anims;
 				game.action = "Idle";
-				game.mode = game.modes.ACTIVE;
 				game.animate();
 			}
 		});	
 	}
-
 
         
 
@@ -91,22 +86,22 @@ class Game {
 
         window.addEventListener('resize', () => this.onWindowResize(), false);
 
-        // OrbitControls pour déplacer la caméra avec la souris
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 
-        this.loadEnvironment();
+        const loader = new FBXLoader();
+
+        this.loadEnvironment(loader);
         this.setupGUI();
 
-        this.player = new Player(this, () => this.focusCameraOnPlayer());
+        var joueur = this.player = new Player(this, () => this.focusCameraOnPlayer());
     }
 
     setupGUI() {
         const gui = new GUI();
         gui.add({ focusOnPlayer: () => this.focusCameraOnPlayer() }, 'focusOnPlayer').name('Focus on Player');
-
         const animationsFolder = gui.addFolder('Animations');
-        Object.keys(this.animations).forEach(actionName => {
-            animationsFolder.add({ [actionName]: () => this.playAnimation(actionName) }, actionName).name(`Play ${actionName}`);
+        this.anims.forEach(actionName => {
+            animationsFolder.add({ [actionName]: () => joueur.setAction(actionName) }, actionName).name(`Play ${actionName}`); // prolbème ici
         });
         animationsFolder.open();
     }
@@ -119,8 +114,8 @@ class Game {
         }
     }
 
-    loadEnvironment() {
-        const loader = new FBXLoader();
+    loadEnvironment(loader) {
+        const game = this;
         loader.load(`${this.assetsPath}fbx/town.fbx`, function (object) {
             game.environment = object;
             game.colliders = [];
@@ -181,28 +176,46 @@ class Player {
         this.game = game;
         this.mixer = null;
         this.actions = {};
+        this.animations = {};
         this.loadModel();
-
     }
 
     loadModel() {
         const loader = new FBXLoader();
+        const player = this;
         loader.load(`${this.game.assetsPath}FireFighter.fbx`, (object) => {
             this.mixer = new THREE.AnimationMixer(object);
+            player.root = object;
+            player.mixer = object.mixer;
+            object.name = "Player";
             this.game.scene.add(object);
+
+            object.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            })
+
+            
         });
+
     }
 
-    loadAnimations(game) {
-        const loader = new FBXLoader();
-        loader.load(`${game.assetsPath}/anims/Walking.fbx`, (anim) => {
-            const walk = this.mixer.clipAction(anim.animations[0]);
-           // this.actions.walk = walk;
-           
-            walk.play();
-        });
-
-    }
+    set action(name){
+		//Make a copy of the clip if this is a remote player
+		if (this.actionName == name) return;
+		const clip = (this.local) ? this.animations[name] : THREE.AnimationClip.parse(THREE.AnimationClip.toJSON(this.animations[name])); 
+		const action = this.mixer.clipAction( clip );
+        action.time = 0;
+		this.mixer.stopAllAction();
+		this.actionName = name;
+		this.actionTime = Date.now();
+		action.clampWhenFinished = true;
+		action.fadeIn(0.5);	
+		action.play();
+	}
+    
 
     update(delta) {
         if (this.mixer) {
