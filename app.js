@@ -14,13 +14,13 @@ class Game {
         this.camera;
         this.scene;
         this.renderer;
+        const game = this;
 
         this.container = document.createElement('div');
         this.container.style.height = '100vh';
         document.body.appendChild(this.container);
 
         this.assetsPath = '../assets/';
-        var assetsPath = this.assetsPath;
 
         this.clock = new THREE.Clock();
 
@@ -39,7 +39,8 @@ class Game {
 			}
 		}
         this.anims = ['Walking', 'Walking Backwards', 'Turn', 'Running', 'Pointing', 'Talking', 'Pointing Gesture'];
-        this.anims.forEach( function(anim){ options.assets.push(`${assetsPath}/anims/${anim}.fbx`)});
+        this.anims.forEach( function(anim){ options.assets.push(`${game.assetsPath}anims/${anim}.fbx`)});
+		options.assets.push(`${game.assetsPath}Firefighter.fbx`);
 
         
         this.init();
@@ -49,10 +50,16 @@ class Game {
 
     }
 
-	loadNextAnim(loader){
+
+    loadNextAnim(loader){
+        if (!this.anims || this.anims.length === 0) {
+            console.warn('No more animations to load.');
+            return;
+        }
 		let anim = this.anims.pop();
 		const game = this;
-		loader.load( `${this.assetsPath}/anims/${anim}.fbx`, function( object ){
+		loader.load( `${this.assetsPath}anims/${anim}.fbx`, function( object ){
+            console.log('loaded', anim);
 			game.player.animations[anim] = object.animations[0];
 			if (game.anims.length>0){
 				game.loadNextAnim(loader);
@@ -61,8 +68,11 @@ class Game {
 				game.action = "Idle";
 				game.animate();
 			}
+
 		});	
+       
 	}
+
 
         
 
@@ -93,19 +103,22 @@ class Game {
         this.loadEnvironment(loader);
         this.setupGUI();
 
-        var joueur = this.player = new Player(this, () => this.focusCameraOnPlayer());
+        this.player = new Player(this)
     }
 
     setupGUI() {
+        /*
         const gui = new GUI();
         gui.add({ focusOnPlayer: () => this.focusCameraOnPlayer() }, 'focusOnPlayer').name('Focus on Player');
         const animationsFolder = gui.addFolder('Animations');
         this.anims.forEach(actionName => {
-            animationsFolder.add({ [actionName]: () => joueur.setAction(actionName) }, actionName).name(`Play ${actionName}`); // prolbème ici
+            animationsFolder.add({ [actionName]: () => this.action(actionName) }, actionName).name(`Play ${actionName}`); // prolbème ici
         });
         animationsFolder.open();
     }
+*/
 
+    }
     playAnimation(animationName) {
         const action = this.animations[animationName.toLowerCase()];
         if (action) {
@@ -155,11 +168,27 @@ class Game {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    animate() {
-        requestAnimationFrame(() => this.animate());
-        const delta = this.clock.getDelta();
-        if (this.player.mixer) this.player.mixer.update(delta);
+    animate(){
+        const game = this;
+        const dt = this.clock.getDelta(); // Durée depuis la dernière frame
+    
+        // Mettre à jour le mixer d'animation
+        if (this.player && this.player.mixer) {
+            this.player.mixer.update(dt);
+        }
+    
+        // Mettre à jour le joueur
+        if (this.player) {
+            this.player.update(dt);
+        }
+    
+        // Rendre la scène
         this.renderer.render(this.scene, this.camera);
+    
+        // Demander une nouvelle frame d'animation
+        requestAnimationFrame(function() {
+            game.animate();
+        });
     }
 
     focusCameraOnPlayer() {
@@ -172,49 +201,125 @@ class Game {
 }
 
 class Player {
-    constructor(game) {
-        this.game = game;
-        this.mixer = null;
-        this.actions = {};
+    constructor(game, options){
         this.animations = {};
-        this.loadModel();
-    }
+        this.local = true
+        this.game = game;
+        this.otherPlayer = {};
+        this.initKeyboardControls();
+        let model;
 
-    loadModel() {
-        const loader = new FBXLoader();
         const player = this;
-        loader.load(`${this.game.assetsPath}FireFighter.fbx`, (object) => {
-            this.mixer = new THREE.AnimationMixer(object);
-            player.root = object;
-            player.mixer = object.mixer;
-            object.name = "Player";
-            this.game.scene.add(object);
+        const loader = new FBXLoader()
+        
 
-            object.traverse(child => {
+        loader.load(`/assets/Firefighter.fbx`, function (object) {
+            object.mixer = new THREE.AnimationMixer( object );
+			player.root = object;
+			player.mixer = object.mixer;
+            object.name = "Person";
+            object.traverse(function (child) {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
-            })
+            });
+        
+            player.object = new THREE.Object3D();
+            player.object.add(object);
+            game.scene.add(player.object)
 
-            
+            if (object.animations) {
+                const animations = object.animations;
+                animations.forEach((anim) => {
+                    player.animations[anim.name] = anim;
+                    console.log(anim.name);
+
+                });
+            } else {
+                console.error('Aucune animation trouvée dans le modèle FBX.');
+            }
+
+
+            game.loadNextAnim(loader); 
+            game.animate()
+
         });
 
     }
 
-    set action(name){
-		//Make a copy of the clip if this is a remote player
-		if (this.actionName == name) return;
-		const clip = (this.local) ? this.animations[name] : THREE.AnimationClip.parse(THREE.AnimationClip.toJSON(this.animations[name])); 
-		const action = this.mixer.clipAction( clip );
-        action.time = 0;
-		this.mixer.stopAllAction();
-		this.actionName = name;
-		this.actionTime = Date.now();
-		action.clampWhenFinished = true;
-		action.fadeIn(0.5);	
-		action.play();
-	}
+
+
+    initKeyboardControls() {
+        document.addEventListener('keydown', (e) => this.onKeyDown(e));
+        document.addEventListener('keyup', (e) => this.onKeyUp(e));
+    }
+
+    onKeyDown(event) {
+        switch (event.key) {
+            case 'z': // Avancer
+            case 'q': // Gauche
+            case 's': // Reculer
+            case 'd': // Droite
+                this.playWalkingAnimation();
+                break;
+            // Ajoutez d'autres cas au besoin
+        }
+    }
+
+    onKeyUp(event) {
+        switch (event.key) {
+            case 'z':
+            case 'q':
+            case 's':
+            case 'd':
+                this.stopWalkingAnimation();
+                break;
+            // Ajoutez d'autres cas au besoin
+        }
+    }
+
+    playWalkingAnimation() {
+        if (this.actionName !== 'Walking') {
+            this.action = 'Walking';
+        }
+    }
+
+    stopWalkingAnimation() {
+        if (this.actionName === 'Walking') {
+            // Ici, vous pourriez vouloir revenir à une animation "Idle" ou simplement arrêter l'animation actuelle
+            this.action = 'Talking'; // Assurez-vous d'avoir une animation "Idle" ou adaptez selon vos besoins
+        }
+    }
+
+    set action(name) {
+        if (this.actionName == name) return;
+        if (!this.animations[name]) {
+            console.warn(`L'animation ${name} n'est pas disponible.`);
+            return;
+        }
+        const clip = (this.local) ? this.animations[name] : THREE.AnimationClip.parse(THREE.AnimationClip.toJSON(this.animations[name])); 
+        
+        if (!clip) {
+            console.error(`L'animation ${name} n'a pas été trouvée.`);
+            return;
+        }
+    
+    
+        if (this.previousAction) {
+            const prevAction = this.mixer.clipAction(this.animations[this.actionName]);
+            prevAction.fadeOut(0.5); // Définissez la durée du fondu sortant
+        }
+        this.actionName = name;
+        this.actionTime = Date.now();
+
+        const action = this.mixer.clipAction(clip);
+        action.reset();
+        action.fadeIn(0.5); 
+        action.play();
+    
+        this.previousAction = action; // Mémorisez l'action actuelle pour la prochaine fois
+    }
     
 
     update(delta) {
