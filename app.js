@@ -320,6 +320,8 @@ class Player {
     
         this.previousAction = action; // Mémorisez l'action actuelle pour la prochaine fois
     }
+
+    //tests
     
 
     update(delta) {
