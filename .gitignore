@@ -13,3 +13,7 @@ assets
 assets/anims
 
 
+assetsv1/
+assetsv1/anims/
+node_modules/
+
