@@ -38,9 +38,9 @@ class Game {
 				this.init();
 			}
 		}
-        this.anims = ['Walking', 'Walking Backwards', 'Turn', 'Running', 'Pointing', 'Talking', 'Pointing Gesture'];
+        this.anims = ['Walking', 'Left Turn', 'Right Turn', 'Idle'];
         this.anims.forEach( function(anim){ options.assets.push(`${game.assetsPath}anims/${anim}.fbx`)});
-		options.assets.push(`${game.assetsPath}Firefighter.fbx`);
+		options.assets.push(`${game.assetsPath}Player.fbx`);
 
         
         this.init();
@@ -134,6 +134,7 @@ class Game {
             game.colliders = [];
             game.scene.add(object);
             
+            
             object.traverse(function (child) {
                 if (child.isMesh) {
                     if (child.name.startsWith("proxy")) {
@@ -168,28 +169,37 @@ class Game {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    animate(){
+    animate() {
         const game = this;
         const dt = this.clock.getDelta(); // Durée depuis la dernière frame
     
-        // Mettre à jour le mixer d'animation
         if (this.player && this.player.mixer) {
             this.player.mixer.update(dt);
         }
     
-        // Mettre à jour le joueur
-        if (this.player) {
+        if (this.player && this.player.object) {
             this.player.update(dt);
+    
+            // Calculer la position de la caméra pour qu'elle suive le joueur
+            const relativeCameraOffset = new THREE.Vector3(-100, 450, -1500);
+            
+            // Appliquer la rotation du joueur au vecteur offset
+            const cameraOffset = relativeCameraOffset.applyMatrix4(this.player.object.matrixWorld);
+    
+            // Mettre à jour la position et l'orientation de la caméra
+            this.camera.position.x = cameraOffset.x;
+            this.camera.position.y = cameraOffset.y;
+            this.camera.position.z = cameraOffset.z;
+            this.camera.lookAt(this.player.object.position);
         }
     
-        // Rendre la scène
         this.renderer.render(this.scene, this.camera);
     
-        // Demander une nouvelle frame d'animation
         requestAnimationFrame(function() {
             game.animate();
         });
     }
+    
 
     focusCameraOnPlayer() {
         if (this.player.object) {
@@ -207,17 +217,25 @@ class Player {
         this.game = game;
         this.otherPlayer = {};
         this.initKeyboardControls();
+
+
+        this.isMovingForward = false; 
+        this.isMovingLeft = false;  
+        this.isMovingRight = false; 
+
         let model;
 
         const player = this;
         const loader = new FBXLoader()
         
 
-        loader.load(`/assets/Firefighter.fbx`, function (object) {
+        loader.load(`/assets/Mec.fbx`, function (object) {
             object.mixer = new THREE.AnimationMixer( object );
 			player.root = object;
 			player.mixer = object.mixer;
             object.name = "Person";
+            object.scale.set(2, 2, 2);
+            console.log(object)
             object.traverse(function (child) {
                 if (child.isMesh) {
                     child.castShadow = true;
@@ -233,7 +251,7 @@ class Player {
                 const animations = object.animations;
                 animations.forEach((anim) => {
                     player.animations[anim.name] = anim;
-                    console.log(anim.name);
+                    
 
                 });
             } else {
@@ -258,24 +276,44 @@ class Player {
     onKeyDown(event) {
         switch (event.key) {
             case 'z': // Avancer
-            case 'q': // Gauche
-            case 's': // Reculer
-            case 'd': // Droite
+                this.isMovingForward = true;
+                this.action = 'Walking';
                 this.playWalkingAnimation();
                 break;
-            // Ajoutez d'autres cas au besoin
+            case 'q':
+                this.isMovingLeft = true;
+                this.action = 'Walking';
+                break;
+            case 'd':
+                this.isMovingRight = true;
+                this.action = 'Walking';
+                break;
+            case 's': 
+                break;
+
         }
     }
 
     onKeyUp(event) {
         switch (event.key) {
             case 'z':
-            case 'q':
-            case 's':
-            case 'd':
-                this.stopWalkingAnimation();
+                this.isMovingForward = false;
+                this.stopWalkingAnimation()
                 break;
-            // Ajoutez d'autres cas au besoin
+            case 'q':
+                this.isMovingLeft = false;
+                this.stopWalkingAnimation()
+                break;
+            case 'd':
+                this.isMovingRight = false;
+                this.stopWalkingAnimation()
+                break;
+            case 's':
+                break;
+
+        }
+        if (!this.isMovingForward && !this.isMovingLeft && !this.isMovingRight) {
+            this.action = 'Idle';
         }
     }
 
@@ -288,7 +326,7 @@ class Player {
     stopWalkingAnimation() {
         if (this.actionName === 'Walking') {
             // Ici, vous pourriez vouloir revenir à une animation "Idle" ou simplement arrêter l'animation actuelle
-            this.action = 'Talking'; // Assurez-vous d'avoir une animation "Idle" ou adaptez selon vos besoins
+            this.action = 'Idle'; // Assurez-vous d'avoir une animation "Idle" ou adaptez selon vos besoins
         }
     }
 
@@ -326,7 +364,18 @@ class Player {
 
     update(delta) {
         if (this.mixer) {
-            this.mixer.update(delta);
+            this.mixer.update(delta / 1000);
+        }
+
+        if (this.isMovingForward) {
+            this.object.translateZ(1225 * delta);
+            console.log(this.object.position.x)// Ajustez la vitesse si nécessaire
+        }
+        if (this.isMovingLeft) {
+            this.object.rotateY(5 * delta); // Ajustez la vitesse de rotation
+        }
+        if (this.isMovingRight) {
+            this.object.rotateY(-5 * delta); // Ajustez la vitesse de rotation
         }
     }
 

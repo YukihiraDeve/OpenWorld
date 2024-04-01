@@ -2,6 +2,12 @@
 ./assets
 ./assets/anims
 
+
+./node_modules
+./assetsv1
+./assetsv1/anims
+
+
 node_modules
 assets
 assets/anims
