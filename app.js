@@ -129,7 +129,7 @@ class Game {
 
     loadEnvironment(loader) {
         const game = this;
-        loader.load(`${this.assetsPath}fbx/town.fbx`, function (object) {
+        loader.load(`${this.assetsPath}fbx/test.fbx`, function (object) {
             game.environment = object;
             game.colliders = [];
             game.scene.add(object);
@@ -234,7 +234,7 @@ class Player {
 			player.root = object;
 			player.mixer = object.mixer;
             object.name = "Person";
-            object.scale.set(2, 2, 2);
+            object.scale.set(0.5, 0.5, 0.5);
             console.log(object)
             object.traverse(function (child) {
                 if (child.isMesh) {
@@ -242,7 +242,8 @@ class Player {
                     child.receiveShadow = true;
                 }
             });
-        
+            
+        //test
             player.object = new THREE.Object3D();
             player.object.add(object);
             game.scene.add(player.object)

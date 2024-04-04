@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - FBX loader</title>
+		<title>three.js webgl - loaders - OBJ loader</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<link type="text/css" rel="stylesheet" href="main.css">
@@ -9,8 +9,7 @@
 
 	<body>
 		<div id="info">
-			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - FBXLoader<br />
-			Character and animation from <a href="https://www.mixamo.com/" target="_blank" rel="noopener">Mixamo</a>
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - OBJLoader test
 		</div>
 
 		<script type="importmap">
@@ -26,97 +25,94 @@
 
 			import * as THREE from 'three';
 
-			import Stats from 'three/addons/libs/stats.module.js';
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader'
 
-			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+			let camera, scene, renderer;
 
-			let camera, scene, renderer, stats;
-
-			const clock = new THREE.Clock();
-
-			let mixer;
+			let object;
 
 			init();
-			animate();
+
 
 			function init() {
 
-				const container = document.createElement( 'div' );
-				document.body.appendChild( container );
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 2000 );
+				camera.position.z = 2.5;
 
-				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
-				camera.position.set( 100, 200, 300 );
+				// scene
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0xa0a0a0 );
-				scene.fog = new THREE.Fog( 0xa0a0a0, 200, 1000 );
 
-				const hemiLight = new THREE.HemisphereLight( 0xffffff, 0x444444, 5 );
-				hemiLight.position.set( 0, 200, 0 );
-				scene.add( hemiLight );
+				const ambientLight = new THREE.AmbientLight( 0xffffff );
+				scene.add( ambientLight );
 
-				const dirLight = new THREE.DirectionalLight( 0xffffff, 5 );
-				dirLight.position.set( 0, 200, 100 );
-				dirLight.castShadow = true;
-				dirLight.shadow.camera.top = 180;
-				dirLight.shadow.camera.bottom = - 100;
-				dirLight.shadow.camera.left = - 120;
-				dirLight.shadow.camera.right = 120;
-				scene.add( dirLight );
+				const pointLight = new THREE.PointLight( 0xffffff, 15 );
+				camera.add( pointLight );
+				scene.add( camera );
 
-				// scene.add( new THREE.CameraHelper( dirLight.shadow.camera ) );
+				// manager
 
-				// ground
-				const mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
-				mesh.rotation.x = - Math.PI / 2;
-				mesh.receiveShadow = true;
-				scene.add( mesh );
-
-				const grid = new THREE.GridHelper( 2000, 20, 0x000000, 0x000000 );
-				grid.material.opacity = 0.2;
-				grid.material.transparent = true;
-				scene.add( grid );
 
 				// model
-				const loader = new FBXLoader();
-				loader.load( 'assets/Player.fbx', function ( object ) {
 
-					mixer = new THREE.AnimationMixer( object );
+				function onProgress( xhr ) {
 
-					const action = mixer.clipAction( object.animations[ 0 ] );
-					action.play();
+					if ( xhr.lengthComputable ) {
 
-					object.traverse( function ( child ) {
+						const percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( 'model ' + percentComplete.toFixed( 2 ) + '% downloaded' );
 
-						if ( child.isMesh ) {
+					}
 
-							child.castShadow = true;
-							child.receiveShadow = true;
+				}
 
+				function onError() {}
+
+				const mtlLoader = new MTLLoader()
+					mtlLoader.load(
+						'assets/tes2.mtl',
+						(materials) => {
+							materials.preload()
+							console.log(materials)
+							const objLoader = new OBJLoader()
+							objLoader.setMaterials(materials)
+							objLoader.load(
+							'assets/tes2.obj',
+							     (object) => {
+							         scene.add(object)
+							    },
+							    (xhr) => {
+							         console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+							    },
+							    (error) => {
+							        console.log('An error happened')
+							     }
+							 )
+						},
+						(xhr) => {
+							console.log((xhr.loaded / xhr.total) * 100 + '% loaded')
+						},
+						(error) => {
+							console.log('An error happened')
 						}
-
-					} );
-
-					scene.add( object );
-
-				} );
-
+					)
 				renderer = new THREE.WebGLRenderer( { antialias: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
-				renderer.shadowMap.enabled = true;
-				container.appendChild( renderer.domElement );
+				document.body.appendChild( renderer.domElement );
 
-				const controls = new OrbitControls( camera, renderer.domElement );
-				controls.target.set( 0, 100, 0 );
-				controls.update();
+				//
+
+				const controls = new  OrbitControls( camera, renderer.domElement );
+				controls.minDistance = 2;
+				controls.maxDistance = 5;
+				controls.addEventListener( 'change', render );
+
+				//
 
 				window.addEventListener( 'resize', onWindowResize );
-
-				// stats
-				stats = new Stats();
-				container.appendChild( stats.dom );
 
 			}
 
@@ -129,21 +125,12 @@
 
 			}
 
-			//
-
-			function animate() {
-
-				requestAnimationFrame( animate );
-
-				const delta = clock.getDelta();
-
-				if ( mixer ) mixer.update( delta );
+			function render() {
 
 				renderer.render( scene, camera );
 
-				stats.update();
-
 			}
+
 
 		</script>
 
