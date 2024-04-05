@@ -81,8 +81,16 @@ class Game {
         this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 200000);
         this.camera.position.set(112, 100, 400);
 
-        const ambient = new THREE.AmbientLight(0xaaaaaa);
+        const ambient = new THREE.AmbientLight(0xaaaaFF, 1);
         this.scene.add(ambient);
+
+        const spotLight = new THREE.SpotLight(0xffffff);
+        spotLight.position.set(100, 0, 100);
+        spotLight.castShadow = true;    
+        //show light
+
+        this.scene.add(new THREE.SpotLightHelper(spotLight));
+      
 
         const light = new THREE.DirectionalLight(0xaaaaaa);
         light.position.set(30, 100, 40);
@@ -97,28 +105,17 @@ class Game {
         window.addEventListener('resize', () => this.onWindowResize(), false);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-
         const loader = new FBXLoader();
 
         this.loadEnvironment(loader);
-        this.setupGUI();
 
         this.player = new Player(this)
     }
 
-    setupGUI() {
-        /*
-        const gui = new GUI();
-        gui.add({ focusOnPlayer: () => this.focusCameraOnPlayer() }, 'focusOnPlayer').name('Focus on Player');
-        const animationsFolder = gui.addFolder('Animations');
-        this.anims.forEach(actionName => {
-            animationsFolder.add({ [actionName]: () => this.action(actionName) }, actionName).name(`Play ${actionName}`); // prolbème ici
-        });
-        animationsFolder.open();
-    }
-*/
 
-    }
+
+    
+
     playAnimation(animationName) {
         const action = this.animations[animationName.toLowerCase()];
         if (action) {
@@ -129,13 +126,33 @@ class Game {
 
     loadEnvironment(loader) {
         const game = this;
-        loader.load(`${this.assetsPath}fbx/test.fbx`, function (object) {
+        loader.load(`${this.assetsPath}fbx/nottheend.fbx`, function (object) {
             game.environment = object;
             game.colliders = [];
-            game.scene.add(object);
+
+            //here
+
+            let waterObject = null;
+       
+
+
             
             
             object.traverse(function (child) {
+                if (child.name == "terrain-world-water") {
+                    waterObject = child;
+                    console.log("Objet 'water' trouvé:", waterObject);
+                    const textureLoader = new THREE.TextureLoader();
+                        textureLoader.load('assets/Texture/atlas-LPUP.png', function (texture) {
+                            texture.encoding = THREE.sRGBEncoding;
+                            child.material.map = texture;
+                            child.material.needsUpdate = true;
+                        });
+                    }
+         
+                    
+                
+
                 if (child.isMesh) {
                     if (child.name.startsWith("proxy")) {
                         game.colliders.push(child);
@@ -155,6 +172,7 @@ class Game {
                 'py.jpg', 'ny.jpg',
                 'pz.jpg', 'nz.jpg'
             ]);
+            game.scene.add(object);
 
             game.scene.background = textureCube;
 
@@ -170,48 +188,27 @@ class Game {
     }
 
     animate() {
-        const game = this;
-        const dt = this.clock.getDelta(); // Durée depuis la dernière frame
-    
-        if (this.player && this.player.mixer) {
-            this.player.mixer.update(dt);
-        }
+        requestAnimationFrame(() => this.animate());
+
+        const dt = this.clock.getDelta();
     
         if (this.player && this.player.object) {
             this.player.update(dt);
     
-            // Calculer la position de la caméra pour qu'elle suive le joueur
-            const relativeCameraOffset = new THREE.Vector3(-100, 450, -1500);
-            
-            // Appliquer la rotation du joueur au vecteur offset
-            const cameraOffset = relativeCameraOffset.applyMatrix4(this.player.object.matrixWorld);
-    
-            // Mettre à jour la position et l'orientation de la caméra
-            this.camera.position.x = cameraOffset.x;
-            this.camera.position.y = cameraOffset.y;
-            this.camera.position.z = cameraOffset.z;
-            this.camera.lookAt(this.player.object.position);
+            // Ajustez la position Y de la cible pour élever légèrement le point focal au-dessus du joueur
+            const targetPosition = this.player.object.position.clone().add(new THREE.Vector3(0, 50, 0)); // Ajustez 50 selon les besoins pour élever la cible
+            this.controls.target.copy(targetPosition);
         }
     
+        this.controls.update(); 
         this.renderer.render(this.scene, this.camera);
-    
-        requestAnimationFrame(function() {
-            game.animate();
-        });
     }
     
-
-    focusCameraOnPlayer() {
-        if (this.player.object) {
-            this.camera.position.set(this.player.object.position.x, this.player.object.position.y + 5, this.player.object.position.z + 10);
-            this.camera.lookAt(this.player.object.position);
-        }
-    }
     
 }
 
 class Player {
-    constructor(game, options){
+    constructor(game, onLoadCallback){
         this.animations = {};
         this.local = true
         this.game = game;
@@ -235,6 +232,7 @@ class Player {
 			player.mixer = object.mixer;
             object.name = "Person";
             object.scale.set(0.5, 0.5, 0.5);
+            object.position.set(0, -500, 0);
             console.log(object)
             object.traverse(function (child) {
                 if (child.isMesh) {
@@ -247,6 +245,13 @@ class Player {
             player.object = new THREE.Object3D();
             player.object.add(object);
             game.scene.add(player.object)
+
+            game.camera.position.set(
+                player.object.position.x + 1000,
+                player.object.position.y - 1000 ,
+                player.object.position.z + 1000
+            );
+            game.controls.target.copy(player.object.position);
 
             if (object.animations) {
                 const animations = object.animations;
@@ -265,6 +270,8 @@ class Player {
 
         });
 
+
+
     }
 
 
@@ -278,45 +285,34 @@ class Player {
         switch (event.key) {
             case 'z': // Avancer
                 this.isMovingForward = true;
-                this.action = 'Walking';
                 this.playWalkingAnimation();
                 break;
-            case 'q':
+            case 'q': // Gauche
                 this.isMovingLeft = true;
-                this.action = 'Walking';
                 break;
-            case 'd':
+            case 'd': // Droite
                 this.isMovingRight = true;
-                this.action = 'Walking';
                 break;
-            case 's': 
-                break;
-
         }
+   //    this.updateMovementDirection();
     }
-
+    
     onKeyUp(event) {
         switch (event.key) {
             case 'z':
                 this.isMovingForward = false;
-                this.stopWalkingAnimation()
+                this.stopWalkingAnimation();
                 break;
             case 'q':
                 this.isMovingLeft = false;
-                this.stopWalkingAnimation()
                 break;
             case 'd':
                 this.isMovingRight = false;
-                this.stopWalkingAnimation()
                 break;
-            case 's':
-                break;
-
         }
-        if (!this.isMovingForward && !this.isMovingLeft && !this.isMovingRight) {
-            this.action = 'Idle';
-        }
+       // this.updateMovementDirection();
     }
+
 
     playWalkingAnimation() {
         if (this.actionName !== 'Walking') {
@@ -360,27 +356,27 @@ class Player {
         this.previousAction = action; // Mémorisez l'action actuelle pour la prochaine fois
     }
 
-    //tests
+
     
 
     update(delta) {
-        if (this.mixer) {
-            this.mixer.update(delta / 1000);
-        }
-
+        if (this.mixer) this.mixer.update(delta);
+    
+        const speed = 5000; // Ajustez selon les besoins
         if (this.isMovingForward) {
-            this.object.translateZ(1225 * delta);
-            console.log(this.object.position.x)// Ajustez la vitesse si nécessaire
+            this.object.translateZ(delta * speed);
+            console.log(this.object.position.x)
         }
         if (this.isMovingLeft) {
-            this.object.rotateY(5 * delta); // Ajustez la vitesse de rotation
+            this.object.rotateY(delta);
         }
         if (this.isMovingRight) {
-            this.object.rotateY(-5 * delta); // Ajustez la vitesse de rotation
+            this.object.rotateY(-delta);
         }
     }
+    
 
-    //test
+
 }
 
 
