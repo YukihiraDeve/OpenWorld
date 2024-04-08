@@ -196,7 +196,7 @@ class Game {
             this.player.update(dt);
     
             // Ajustez la position Y de la cible pour élever légèrement le point focal au-dessus du joueur
-            const targetPosition = this.player.object.position.clone().add(new THREE.Vector3(0, 50, 0)); // Ajustez 50 selon les besoins pour élever la cible
+            const targetPosition = this.player.object.position.clone().add(new THREE.Vector3(0, 0, 0)); // Ajustez 50 selon les besoins pour élever la cible
             this.controls.target.copy(targetPosition);
         }
     
@@ -208,7 +208,7 @@ class Game {
 }
 
 class Player {
-    constructor(game, onLoadCallback){
+    constructor(game){
         this.animations = {};
         this.local = true
         this.game = game;
@@ -240,8 +240,8 @@ class Player {
                     child.receiveShadow = true;
                 }
             });
+        
             
-        //test
             player.object = new THREE.Object3D();
             player.object.add(object);
             game.scene.add(player.object)
