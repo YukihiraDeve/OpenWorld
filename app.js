@@ -241,7 +241,7 @@ class Player {
                 }
             });
         
-            
+
             player.object = new THREE.Object3D();
             player.object.add(object);
             game.scene.add(player.object)
@@ -358,6 +358,8 @@ class Player {
 
 
     
+
+    //testsetsetset
 
     update(delta) {
         if (this.mixer) this.mixer.update(delta);
