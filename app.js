@@ -194,10 +194,6 @@ class Game {
     
         if (this.player && this.player.object) {
             this.player.update(dt);
-    
-            // Ajustez la position Y de la cible pour élever légèrement le point focal au-dessus du joueur
-            const targetPosition = this.player.object.position.clone().add(new THREE.Vector3(0, 0, 0)); // Ajustez 50 selon les besoins pour élever la cible
-            this.controls.target.copy(targetPosition);
         }
     
         this.controls.update(); 
@@ -277,41 +273,11 @@ class Player {
 
 
     initKeyboardControls() {
-        document.addEventListener('keydown', (e) => this.onKeyDown(e));
-        document.addEventListener('keyup', (e) => this.onKeyUp(e));
+        document.addEventListener('keydown', (e) => this.update(e));
+        document.addEventListener('keyup', (e) => this.update(e));
     }
 
-    onKeyDown(event) {
-        switch (event.key) {
-            case 'z': // Avancer
-                this.isMovingForward = true;
-                this.playWalkingAnimation();
-                break;
-            case 'q': // Gauche
-                this.isMovingLeft = true;
-                break;
-            case 'd': // Droite
-                this.isMovingRight = true;
-                break;
-        }
-   //    this.updateMovementDirection();
-    }
-    
-    onKeyUp(event) {
-        switch (event.key) {
-            case 'z':
-                this.isMovingForward = false;
-                this.stopWalkingAnimation();
-                break;
-            case 'q':
-                this.isMovingLeft = false;
-                break;
-            case 'd':
-                this.isMovingRight = false;
-                break;
-        }
-       // this.updateMovementDirection();
-    }
+
 
 
     playWalkingAnimation() {
@@ -356,25 +322,70 @@ class Player {
         this.previousAction = action; // Mémorisez l'action actuelle pour la prochaine fois
     }
 
+    updateCameraTarget(moveX, moveZ){
+        this.camera.position.x += moveX;
+        this.camera.position.z += moveZ;
 
+        this.updateCameraTarget.x = this.object.position.x;
+        this.updateCameraTarget.z = this.object.position.z;
+        this.updateCameraTarget.y = this.object.position.y + 1;
+        this.OrbitControls.target = this.cameraTarget;
     
+    }
 
-    //testsetsetset
 
-    update(delta) {
-        if (this.mixer) this.mixer.update(delta);
-    
-        const speed = 5000; // Ajustez selon les besoins
+
+    update(delta, keysPressed = null) {
+        this.mixer.update(delta);
         if (this.isMovingForward) {
-            this.object.translateZ(delta * speed);
-            console.log(this.object.position.x)
+            var angleYCameraDirection = Math.atan2(game.camera.position.x - this.object.position.x, game.camera.position.z - this.object.position.z);
+            var directionOffset = directionOffset(keysPressed);
+
+            this.rotateQuarternion.setFromAxisAngle(this.rotateAngle, angleYCameraDirection + directionOffset);
+            this.object.rotateToward(this.rotateQuarternion, delta * 0.1);
+
+            this.camera.getWorldDirection(this.walkDirection);
+            this.walkDirection.y = 0;
+            this.walkDirection.normalize();
+            this.walkDirection.applyAxisAngle(this.rotateAngle, directionOffset);
+
+            const velocity =  this.currentAction == 'Walking' ? this.runVelocity : this.walkVelocity;
+
+            const moveX = this.walkDirection.x * velocity * delta;
+            const moveZ = this.walkDirection.z * velocity * delta;
+
+            this.object.position.x += moveX;
+            this.object.position.z += moveZ;
+
+            this.updateCameraTarget(moveX, moveZ);
+         //   console.log(this.object.position.x)
         }
-        if (this.isMovingLeft) {
-            this.object.rotateY(delta);
+        
+    }
+
+    directionOffset(keysPressed) {
+        var directionOffset = 0 // w
+        if (keysPressed[Z]) {
+            if (keysPressed[A]) {
+                directionOffset = Math.PI / 4 // w+a
+            } else if (keysPressed[D]) {
+                directionOffset = - Math.PI / 4 // w+d
+            }
+        } else if (keysPressed[S]) {
+            if (keysPressed[A]) {
+                directionOffset = Math.PI / 4 + Math.PI / 2 // s+a
+            } else if (keysPressed[D]) {
+                directionOffset = -Math.PI / 4 - Math.PI / 2 // s+d
+            } else {
+                directionOffset = Math.PI // s
+            }
+        } else if (keysPressed[A]) {
+            directionOffset = Math.PI / 2 // a
+        } else if (keysPressed[D]) {
+            directionOffset = - Math.PI / 2 // d
         }
-        if (this.isMovingRight) {
-            this.object.rotateY(-delta);
-        }
+
+        return directionOffset
     }
     
 
