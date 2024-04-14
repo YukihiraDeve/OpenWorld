@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 
 class Game {
     constructor() {
@@ -12,6 +14,12 @@ class Game {
         this.camera;
         this.scene;
         this.renderer;
+
+
+        this.lampObject = null;  // Variable pour stocker l'objet de la lampe
+        this.lampLight = null;
+
+        
         const game = this;
 
         this.container = document.createElement('div');
@@ -48,13 +56,111 @@ class Game {
         this.animate()
 
         
+        
 
     }
 
 
+    init() {
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 200000);
+        this.camera.position.set(112, 100, 400);
+    
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.toneMapping = THREE.ReinhardToneMapping; // Utilisez ACESFilmicToneMapping ou ReinhardToneMapping selon le résultat souhaité
+        this.renderer.toneMappingExposure = 0.5;
+        this.container.appendChild(this.renderer.domElement);
+
+        const ambient = new THREE.AmbientLight(0xaaaaFF, 1);
+        this.scene.add(ambient);
+
+        const spotLight = new THREE.SpotLight(0xffffff);
+        spotLight.position.set(100, 0, 100);
+        spotLight.castShadow = true;    
+        //show light
+
+        this.scene.add(new THREE.SpotLightHelper(spotLight));
+      
+
+        // const light = new THREE.DirectionalLight(0xaaaaaa);
+        // light.position.set(30, 100, 40);
+        // light.castShadow = true;
+        // this.scene.add(light);
+
+  
+
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.0);
+        light.position.set(100, 100, 100);
+        light.castShadow = true;
+
+        // Paramètres d'ombre pour une DirectionalLight
+        light.shadow.mapSize.width = 4024;  // Résolution des ombres
+        light.shadow.mapSize.height = 4024;
+        light.shadow.camera.near = 0.5;
+        light.shadow.camera.far = 20000;
+        light.shadow.camera.left = -5000;
+        light.shadow.camera.right = 5000;
+        light.shadow.camera.top = 1000;
+        light.shadow.camera.bottom = -1000;
+
+
+
+
+
+        this.scene.add(light);
+        this.initSky();
+
+        window.addEventListener('resize', () => this.onWindowResize(), false);
+
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        const loader = new FBXLoader();
+
+        this.loadEnvironment(loader);
+
+        this.player = new Player(this)
+    }
+
+
+    initSky() {
+        const sky = new Sky();
+        sky.scale.setScalar(450000); // Taille suffisamment grande pour couvrir la scène entière
+        this.scene.add(sky);
+    
+        const sun = new THREE.Vector3();
+    
+        // Les propriétés qui influencent l'apparence du ciel
+        const effectController = {
+            turbidity: 10, // Impureté de l'atmosphère
+            rayleigh: 2, // Diffusion de la lumière par les particules de l'atmosphère
+            mieCoefficient: 0.005,
+            mieDirectionalG: 0.8,
+            elevation: 2, // Hauteur du soleil en degrés
+            azimuth: 180, // Position angulaire du soleil sur l'horizon
+            exposure: this.renderer.toneMappingExposure
+        };
+    
+        const uniforms = sky.material.uniforms;
+        uniforms['turbidity'].value = effectController.turbidity;
+        uniforms['rayleigh'].value = effectController.rayleigh;
+        uniforms['mieCoefficient'].value = effectController.mieCoefficient;
+        uniforms['mieDirectionalG'].value = effectController.mieDirectionalG;
+    
+        const phi = THREE.MathUtils.degToRad(90 - effectController.elevation);
+        const theta = THREE.MathUtils.degToRad(effectController.azimuth);
+    
+        sun.setFromSphericalCoords(1, phi, theta);
+        uniforms['sunPosition'].value.copy(sun);
+    
+        this.renderer.toneMappingExposure = effectController.exposure;
+    }
+    
+
+
 
     createCameras() {
-        // Similar to game.js
         const front = new THREE.Object3D();
         front.position.set(112, 100, 600);
         front.parent = this.player.root;
@@ -72,17 +178,19 @@ class Game {
         collect.parent = this.player.root;
         this.player.cameras = { front, back, wide, overhead, collect };
         this.activeCamera = this.player.cameras.back;
+        this.controls.enabled = false;
     }
+
+
     updateCameraPosition() {
         if (this.player && this.player.root && this.player.cameras && this.activeCamera) {
             try {
                 const worldPosition = new THREE.Vector3();
                 this.activeCamera.getWorldPosition(worldPosition);
-                // Augmenter le facteur de lerp pour une réponse plus immédiate de la caméra
-                this.camera.position.lerp(worldPosition, 0.1);  // Augmenté de 0.05 à 0.1 pour plus de réactivité
+                this.camera.position.lerp(worldPosition, 0.1);  
     
                 const pos = this.player.root.position.clone();
-                pos.y += 50; // Ajustement de la hauteur de la caméra
+                pos.y += 50; 
     
                 this.camera.lookAt(pos);
             } catch (error) {
@@ -95,18 +203,13 @@ class Game {
 
     switchCameraOnMovement() {
         if (this.player.isMovingRight) {
-            this.activeCamera = this.player.cameras.rightSide;  // Supposons que vous avez une caméra configurée pour les mouvements à droite
+            this.activeCamera = this.player.cameras.rightSide; 
         } else if (this.player.isMovingLeft) {
             this.activeCamera = this.player.cameras.leftSide;
         } else {
-            this.activeCamera = this.player.cameras.back;  // Caméra par défaut
+            this.activeCamera = this.player.cameras.back;  
         }
     }
-    
-    
-    
-
-    
     
 
 
@@ -118,7 +221,6 @@ class Game {
 		let anim = this.anims.pop();
 		const game = this;
 		loader.load( `${this.assetsPath}anims/${anim}.fbx`, function( object ){
-            console.log('loaded', anim);
 			game.player.animations[anim] = object.animations[0];
 			if (game.anims.length>0){
 				game.loadNextAnim(loader);
@@ -131,49 +233,6 @@ class Game {
 		});	
        
 	}
-
-
-        
-
-    init() {
-        this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 200000);
-        this.camera.position.set(112, 100, 400);
-
-        const ambient = new THREE.AmbientLight(0xaaaaFF, 1);
-        this.scene.add(ambient);
-
-        const spotLight = new THREE.SpotLight(0xffffff);
-        spotLight.position.set(100, 0, 100);
-        spotLight.castShadow = true;    
-        //show light
-
-        this.scene.add(new THREE.SpotLightHelper(spotLight));
-      
-
-        const light = new THREE.DirectionalLight(0xaaaaaa);
-        light.position.set(30, 100, 40);
-        light.castShadow = true;
-        this.scene.add(light);
-
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
-        this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.shadowMap.enabled = true;
-        this.container.appendChild(this.renderer.domElement);
-
-        window.addEventListener('resize', () => this.onWindowResize(), false);
-
-        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        const loader = new FBXLoader();
-
-        this.loadEnvironment(loader);
-
-        this.player = new Player(this)
-    }
-
-
-
-    
 
     playAnimation(animationName) {
         const action = this.animations[animationName.toLowerCase()];
@@ -188,40 +247,30 @@ class Game {
         loader.load(`${this.assetsPath}fbx/nottheend.fbx`, function (object) {
             game.environment = object;
             game.colliders = [];
-
-            //here
-
-            let waterObject = null;
-       
-
-
-            
-            
             object.traverse(function (child) {
-                if (child.name == "terrain-world-water") {
-                    waterObject = child;
-                    console.log("Objet 'water' trouvé:", waterObject);
-                    const textureLoader = new THREE.TextureLoader();
-                        textureLoader.load('assets/Texture/atlas-LPUP.png', function (texture) {
-                            texture.encoding = THREE.sRGBEncoding;
-                            child.material.map = texture;
-                            child.material.needsUpdate = true;
-                        });
-                    }
-         
-                    
-                
-
+                console.log(child.name);
                 if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    
                     if (child.name.startsWith("proxy")) {
                         game.colliders.push(child);
                         child.material.visible = false;
-                    } else {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
+                    } 
+           
                 }
+
+                if (child.name === "lantern_long__4_") {  // Trouver l'objet nommé "lampe"
+                    game.lampObject = child;  // Sauvegarder l'objet de la lampe
+                    console.log("Lamp object found.", game.lampObject.position);
+                 //   game.addSpotlightToLamp();  // Appeler la fonction pour ajouter une lumière à la lampe
+                }
+
             });
+
+            object.position.set(0, 0, 0);
+            object.scale.set(1, 1, 1);
+
 
             const tloader = new THREE.CubeTextureLoader();
             tloader.setPath(`${game.assetsPath}/images/`);
@@ -232,13 +281,36 @@ class Game {
                 'pz.jpg', 'nz.jpg'
             ]);
             game.scene.add(object);
-
             game.scene.background = textureCube;
-
+            
         });
+
 
         this.loadNextAnim(loader);
     }
+
+    addSpotlightToLamp(){
+        if (!this.lampObject) {
+            console.error("No lamp object found.");
+            return;
+        }
+        // Créer et configurer la SpotLight
+        const spotLight = new THREE.SpotLight(0xffffff, 1.5);
+        spotLight.position.set(this.lampObject.position.x, this.lampObject.position.y + 10, this.lampObject.position.z); // Position au-dessus de la lampe
+        spotLight.target = this.lampObject; // Cibler la lumière sur l'objet lampe
+        spotLight.angle = Math.PI / 4;
+        spotLight.penumbra = 0.1;
+        spotLight.decay = 2;
+        spotLight.distance = 200;
+        spotLight.castShadow = true;
+        this.scene.add(spotLight);
+        this.scene.add(new THREE.SpotLightHelper(spotLight)); 
+
+        this.lampLight = spotLight; // Sauvegarder la référence de la lumière
+        console.log("Spotlight added to lamp.");
+    }
+
+
 
     onWindowResize() {
         this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -250,7 +322,7 @@ class Game {
     animate() {
         requestAnimationFrame(() => this.animate());
         const dt = this.clock.getDelta();
-        this.updateCameraPosition();  // Assurez-vous que ceci est appelé avant d'autres mises à jour
+        this.updateCameraPosition(); 
         if (this.player) {
             this.player.update(dt);
         }
@@ -305,8 +377,8 @@ class Player {
     }
 
     setInitialPosition() {
-        this.root.position.set(0, 0, 0);
-        this.root.scale.set(0.5, 0.5, 0.5);
+        this.root.position.set(6532, -577, 15476); // //6532.9345703125, y: -577.6206970214844, z: 15476.263427734375} Si scale descendu de 1 tenter de diviser par 10
+        this.root.scale.set(0.4, 0.4, 0.4);
         this.root.rotation.y = Math.PI;
     }
 
@@ -317,10 +389,10 @@ class Player {
 
     onKeyDown(event) {
         switch (event.key.toUpperCase()) {
-            case 'Z': this.isMovingForward = true; console.log("Z press"); break;
-            case 'S': this.isMovingBackward = true; console.log("S press"); break;
-            case 'Q': this.isMovingLeft = true; console.log("Q press"); break;
-            case 'D': this.isMovingRight = true; console.log("D press"); break;
+            case 'Z': this.isMovingForward = true; break;
+            case 'S': this.isMovingBackward = true; break;
+            case 'Q': this.isMovingLeft = true;  break;
+            case 'D': this.isMovingRight = true; break;
         }
         this.updateMovement();
     }
@@ -344,16 +416,13 @@ class Player {
     }
 
     set action(name) {
-        console.log(`Setting action to ${name}`);
         if (this.actionName === name) return;
         const clip = this.animations[name];
         if (clip) {
-            console.log(`Playing animation: ${name}`);
             const action = this.mixer.clipAction(clip);
             if (this.currentAction) {
                 const prevAction = this.mixer.clipAction(this.animations[this.actionName]);
                 prevAction.fadeOut(0.5);
-                console.log(`Fading out previous action: ${this.actionName}`);
             }
             action.reset();
             action.fadeIn(0.5);
@@ -376,10 +445,11 @@ class Player {
     }
 
     moveCharacter(delta) {
-        const speed = 100.0; 
+        const speed = 10000.0; 
         const rotationSpeed = Math.PI * 0.5;
         if (this.isMovingForward) {
             this.root.translateZ(speed * delta);
+            console.log(this.root.position);
         }
         if (this.isMovingBackward) {
 
@@ -390,10 +460,15 @@ class Player {
         }
         if (this.isMovingRight) {
             this.root.rotateY(-rotationSpeed * delta);
+
         }
     }
     
 }
+
+
+//6532.9345703125, y: -577.6206970214844, z: 15476.263427734375}
+
 
 
 
