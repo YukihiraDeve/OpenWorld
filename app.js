@@ -189,208 +189,144 @@ class Game {
 
     animate() {
         requestAnimationFrame(() => this.animate());
-
         const dt = this.clock.getDelta();
-    
-        if (this.player && this.player.object) {
-            this.player.update(dt);
+        
+        if (this.player) {
+            this.player.update(dt);  // Assurez-vous que cette ligne est présente
         }
     
-        this.controls.update(); 
+        this.controls.update();
         this.renderer.render(this.scene, this.camera);
     }
+    
     
     
 }
 
 class Player {
-    constructor(game){
-        this.animations = {};
-        this.local = true
+    constructor(game) {
         this.game = game;
-        this.otherPlayer = {};
+        this.mixer = null;
+        this.animations = {};
+        this.actionName = '';
+        this.isMovingForward = false;
+        this.isMovingBackward = false;
+        this.isMovingLeft = false;
+        this.isMovingRight = false;
+        this.currentAction = null;
+        this.initPlayer();
         this.initKeyboardControls();
+    }
 
-
-        this.isMovingForward = false; 
-        this.isMovingLeft = false;  
-        this.isMovingRight = false; 
-
-        let model;
-
-        const player = this;
-        const loader = new FBXLoader()
-        
-
-        loader.load(`/assets/Mec.fbx`, function (object) {
-            object.mixer = new THREE.AnimationMixer( object );
-			player.root = object;
-			player.mixer = object.mixer;
-            object.name = "Person";
-            object.scale.set(0.5, 0.5, 0.5);
-            object.position.set(0, -500, 0);
-            console.log(object)
-            object.traverse(function (child) {
+    initPlayer() {
+        const loader = new FBXLoader();
+        loader.load(`${this.game.assetsPath}Mec.fbx`, (object) => {
+            this.root = object;
+            this.mixer = new THREE.AnimationMixer(object);
+            this.game.scene.add(object);
+            object.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
                 }
             });
-        
-
-            player.object = new THREE.Object3D();
-            player.object.add(object);
-            game.scene.add(player.object)
-
-            game.camera.position.set(
-                player.object.position.x + 1000,
-                player.object.position.y - 1000 ,
-                player.object.position.z + 1000
-            );
-            game.controls.target.copy(player.object.position);
 
             if (object.animations) {
-                const animations = object.animations;
-                animations.forEach((anim) => {
-                    player.animations[anim.name] = anim;
-                    
-
+                object.animations.forEach((animation) => {
+                    this.animations[animation.name] = animation;
                 });
             } else {
-                console.error('Aucune animation trouvée dans le modèle FBX.');
+                console.error('No animations found in the model.');
             }
 
-
-            game.loadNextAnim(loader); 
-            game.animate()
-
+            this.setInitialPosition();
+            this.action = 'Idle';
         });
-
-
-
     }
 
-
+    setInitialPosition() {
+        this.root.position.set(0, 0, 0);
+        this.root.scale.set(0.5, 0.5, 0.5);
+    }
 
     initKeyboardControls() {
-        document.addEventListener('keydown', (e) => this.update(e));
-        document.addEventListener('keyup', (e) => this.update(e));
+        document.addEventListener('keydown', (event) => this.onKeyDown(event));
+        document.addEventListener('keyup', (event) => this.onKeyUp(event));
     }
 
-
-
-
-    playWalkingAnimation() {
-        if (this.actionName !== 'Walking') {
-            this.action = 'Walking';
+    onKeyDown(event) {
+        switch (event.key.toUpperCase()) {
+            case 'Z': this.isMovingForward = true; console.log("Z press"); break;
+            case 'S': this.isMovingBackward = true; console.log("S press"); break;
+            case 'Q': this.isMovingLeft = true; console.log("Q press"); break;
+            case 'D': this.isMovingRight = true; console.log("D press"); break;
         }
+        this.updateMovement();
     }
 
-    stopWalkingAnimation() {
-        if (this.actionName === 'Walking') {
-            // Ici, vous pourriez vouloir revenir à une animation "Idle" ou simplement arrêter l'animation actuelle
-            this.action = 'Idle'; // Assurez-vous d'avoir une animation "Idle" ou adaptez selon vos besoins
+    onKeyUp(event) {
+        switch (event.key.toUpperCase()) {
+            case 'Z': this.isMovingForward = false; break;
+            case 'S': this.isMovingBackward = false; break;
+            case 'Q': this.isMovingLeft = false; break;
+            case 'D': this.isMovingRight = false; break;
+        }
+        this.updateMovement();
+    }
+
+    updateMovement() {
+        if (this.isMovingForward || this.isMovingBackward || this.isMovingLeft || this.isMovingRight) {
+            this.action = 'Walking';
+        } else {
+            this.action = 'Idle';
         }
     }
 
     set action(name) {
-        if (this.actionName == name) return;
-        if (!this.animations[name]) {
-            console.warn(`L'animation ${name} n'est pas disponible.`);
-            return;
-        }
-        const clip = (this.local) ? this.animations[name] : THREE.AnimationClip.parse(THREE.AnimationClip.toJSON(this.animations[name])); 
-        
-        if (!clip) {
-            console.error(`L'animation ${name} n'a pas été trouvée.`);
-            return;
-        }
-    
-    
-        if (this.previousAction) {
-            const prevAction = this.mixer.clipAction(this.animations[this.actionName]);
-            prevAction.fadeOut(0.5); // Définissez la durée du fondu sortant
-        }
-        this.actionName = name;
-        this.actionTime = Date.now();
-
-        const action = this.mixer.clipAction(clip);
-        action.reset();
-        action.fadeIn(0.5); 
-        action.play();
-    
-        this.previousAction = action; // Mémorisez l'action actuelle pour la prochaine fois
-    }
-
-    updateCameraTarget(moveX, moveZ){
-        this.camera.position.x += moveX;
-        this.camera.position.z += moveZ;
-
-        this.updateCameraTarget.x = this.object.position.x;
-        this.updateCameraTarget.z = this.object.position.z;
-        this.updateCameraTarget.y = this.object.position.y + 1;
-        this.OrbitControls.target = this.cameraTarget;
-    
-    }
-
-
-
-    update(delta, keysPressed = null) {
-        this.mixer.update(delta);
-        if (this.isMovingForward) {
-            var angleYCameraDirection = Math.atan2(game.camera.position.x - this.object.position.x, game.camera.position.z - this.object.position.z);
-            var directionOffset = directionOffset(keysPressed);
-
-            this.rotateQuarternion.setFromAxisAngle(this.rotateAngle, angleYCameraDirection + directionOffset);
-            this.object.rotateToward(this.rotateQuarternion, delta * 0.1);
-
-            this.camera.getWorldDirection(this.walkDirection);
-            this.walkDirection.y = 0;
-            this.walkDirection.normalize();
-            this.walkDirection.applyAxisAngle(this.rotateAngle, directionOffset);
-
-            const velocity =  this.currentAction == 'Walking' ? this.runVelocity : this.walkVelocity;
-
-            const moveX = this.walkDirection.x * velocity * delta;
-            const moveZ = this.walkDirection.z * velocity * delta;
-
-            this.object.position.x += moveX;
-            this.object.position.z += moveZ;
-
-            this.updateCameraTarget(moveX, moveZ);
-         //   console.log(this.object.position.x)
-        }
-        
-    }
-
-    directionOffset(keysPressed) {
-        var directionOffset = 0 // w
-        if (keysPressed[Z]) {
-            if (keysPressed[A]) {
-                directionOffset = Math.PI / 4 // w+a
-            } else if (keysPressed[D]) {
-                directionOffset = - Math.PI / 4 // w+d
+        console.log(`Setting action to ${name}`);
+        if (this.actionName === name) return;
+        const clip = this.animations[name];
+        if (clip) {
+            console.log(`Playing animation: ${name}`);
+            const action = this.mixer.clipAction(clip);
+            if (this.currentAction) {
+                const prevAction = this.mixer.clipAction(this.animations[this.actionName]);
+                prevAction.fadeOut(0.5);
+                console.log(`Fading out previous action: ${this.actionName}`);
             }
-        } else if (keysPressed[S]) {
-            if (keysPressed[A]) {
-                directionOffset = Math.PI / 4 + Math.PI / 2 // s+a
-            } else if (keysPressed[D]) {
-                directionOffset = -Math.PI / 4 - Math.PI / 2 // s+d
-            } else {
-                directionOffset = Math.PI // s
-            }
-        } else if (keysPressed[A]) {
-            directionOffset = Math.PI / 2 // a
-        } else if (keysPressed[D]) {
-            directionOffset = - Math.PI / 2 // d
+            action.reset();
+            action.fadeIn(0.5);
+            action.play();
+            this.currentAction = action;
+            this.actionName = name;
+        } else {
+            console.warn(`Animation ${name} not found`);
         }
-
-        return directionOffset
     }
-    
 
+    update(delta) {
+        if (this.mixer) {
+            this.mixer.update(delta);
+        }
+        // Appeler moveCharacter ici pour que le déplacement soit mis à jour à chaque frame
+        this.moveCharacter(delta);
+    }
 
+    moveCharacter(delta) {
+        const speed = 100.0;
+        let moveX = 0, moveZ = 0;
+        if (this.isMovingForward) moveZ -= speed * delta;
+        if (this.isMovingBackward) moveZ += speed * delta;
+        if (this.isMovingLeft) moveX -= speed * delta;
+        if (this.isMovingRight) moveX += speed * delta;
+
+        this.root.position.x += moveX;
+        this.root.position.z += moveZ;
+    }
 }
+
+
+
 
 
 const game = new Game();
