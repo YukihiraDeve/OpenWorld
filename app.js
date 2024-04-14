@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import GUI from 'lil-gui'; 
-
 class Game {
     constructor() {
         this.container;
@@ -42,13 +40,74 @@ class Game {
         this.anims.forEach( function(anim){ options.assets.push(`${game.assetsPath}anims/${anim}.fbx`)});
 		options.assets.push(`${game.assetsPath}Player.fbx`);
 
+
+        this.cameraTarget = new THREE.Vector3(0, -10, -510);
         
         this.init();
+
         this.animate()
 
         
 
     }
+
+
+
+    createCameras() {
+        // Similar to game.js
+        const front = new THREE.Object3D();
+        front.position.set(112, 100, 600);
+        front.parent = this.player.root;
+        const back = new THREE.Object3D();
+        back.position.set(0, 100, -1000);
+        back.parent = this.player.root;
+        const wide = new THREE.Object3D();
+        wide.position.set(178, 139, 1665);
+        wide.parent = this.player.root;
+        const overhead = new THREE.Object3D();
+        overhead.position.set(0, 400, 0);
+        overhead.parent = this.player.root;
+        const collect = new THREE.Object3D();
+        collect.position.set(40, 82, 94);
+        collect.parent = this.player.root;
+        this.player.cameras = { front, back, wide, overhead, collect };
+        this.activeCamera = this.player.cameras.back;
+    }
+    updateCameraPosition() {
+        if (this.player && this.player.root && this.player.cameras && this.activeCamera) {
+            try {
+                const worldPosition = new THREE.Vector3();
+                this.activeCamera.getWorldPosition(worldPosition);
+                // Augmenter le facteur de lerp pour une réponse plus immédiate de la caméra
+                this.camera.position.lerp(worldPosition, 0.1);  // Augmenté de 0.05 à 0.1 pour plus de réactivité
+    
+                const pos = this.player.root.position.clone();
+                pos.y += 50; // Ajustement de la hauteur de la caméra
+    
+                this.camera.lookAt(pos);
+            } catch (error) {
+                console.error("Failed to update camera position:", error);
+            }
+        }
+    }
+    
+
+
+    switchCameraOnMovement() {
+        if (this.player.isMovingRight) {
+            this.activeCamera = this.player.cameras.rightSide;  // Supposons que vous avez une caméra configurée pour les mouvements à droite
+        } else if (this.player.isMovingLeft) {
+            this.activeCamera = this.player.cameras.leftSide;
+        } else {
+            this.activeCamera = this.player.cameras.back;  // Caméra par défaut
+        }
+    }
+    
+    
+    
+
+    
+    
 
 
     loadNextAnim(loader){
@@ -187,15 +246,14 @@ class Game {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
+
     animate() {
         requestAnimationFrame(() => this.animate());
         const dt = this.clock.getDelta();
-        
+        this.updateCameraPosition();  // Assurez-vous que ceci est appelé avant d'autres mises à jour
         if (this.player) {
-            this.player.update(dt);  // Assurez-vous que cette ligne est présente
+            this.player.update(dt);
         }
-    
-        this.controls.update();
         this.renderer.render(this.scene, this.camera);
     }
     
@@ -241,12 +299,15 @@ class Player {
 
             this.setInitialPosition();
             this.action = 'Idle';
+
+            this.game.createCameras();
         });
     }
 
     setInitialPosition() {
         this.root.position.set(0, 0, 0);
         this.root.scale.set(0.5, 0.5, 0.5);
+        this.root.rotation.y = Math.PI;
     }
 
     initKeyboardControls() {
@@ -305,24 +366,33 @@ class Player {
     }
 
     update(delta) {
+
         if (this.mixer) {
             this.mixer.update(delta);
         }
-        // Appeler moveCharacter ici pour que le déplacement soit mis à jour à chaque frame
+
         this.moveCharacter(delta);
+        
     }
 
     moveCharacter(delta) {
-        const speed = 100.0;
-        let moveX = 0, moveZ = 0;
-        if (this.isMovingForward) moveZ -= speed * delta;
-        if (this.isMovingBackward) moveZ += speed * delta;
-        if (this.isMovingLeft) moveX -= speed * delta;
-        if (this.isMovingRight) moveX += speed * delta;
+        const speed = 100.0; 
+        const rotationSpeed = Math.PI * 0.5;
+        if (this.isMovingForward) {
+            this.root.translateZ(speed * delta);
+        }
+        if (this.isMovingBackward) {
 
-        this.root.position.x += moveX;
-        this.root.position.z += moveZ;
+            this.root.translateZ(-speed * delta);
+        }
+        if (this.isMovingLeft) {
+            this.root.rotateY(rotationSpeed * delta);
+        }
+        if (this.isMovingRight) {
+            this.root.rotateY(-rotationSpeed * delta);
+        }
     }
+    
 }
 
 
