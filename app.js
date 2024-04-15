@@ -4,6 +4,10 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 
+
+import * as dat from 'dat.gui';
+
+
 class Game {
     constructor() {
         this.container;
@@ -18,6 +22,9 @@ class Game {
 
         this.lampObject = null;  // Variable pour stocker l'objet de la lampe
         this.lampLight = null;
+
+
+        //Sky
 
         
         const game = this;
@@ -50,8 +57,14 @@ class Game {
 
 
         this.cameraTarget = new THREE.Vector3(0, -10, -510);
+
+
         
         this.init();
+        this.startTime = Date.now();
+  
+
+
 
         this.animate()
 
@@ -63,123 +76,144 @@ class Game {
 
     init() {
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 200000);
-        this.camera.position.set(112, 100, 400);
+        // Réduction de la position de la caméra en fonction du nouveau scale
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Les valeurs positionnelles sont ajustées pour correspondre à la nouvelle échelle
+        this.camera.position.set(1.12, 1.0, 40.0); // Ces valeurs sont à affiner selon votre scène spécifique
+
+
+
+
     
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
-        this.renderer.toneMapping = THREE.ReinhardToneMapping; // Utilisez ACESFilmicToneMapping ou ReinhardToneMapping selon le résultat souhaité
-        this.renderer.toneMappingExposure = 0.5;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Utilisation de PCFSoftShadowMap pour des ombres plus douces
         this.container.appendChild(this.renderer.domElement);
-
-        const ambient = new THREE.AmbientLight(0xaaaaFF, 1);
+    
+        const ambient = new THREE.AmbientLight(0x87CEEB, 1);
         this.scene.add(ambient);
-
-        const spotLight = new THREE.SpotLight(0xffffff);
-        spotLight.position.set(100, 0, 100);
-        spotLight.castShadow = true;    
-        //show light
-
-        this.scene.add(new THREE.SpotLightHelper(spotLight));
-      
-
-        // const light = new THREE.DirectionalLight(0xaaaaaa);
-        // light.position.set(30, 100, 40);
-        // light.castShadow = true;
-        // this.scene.add(light);
-
-  
-
-
+    
+        // Réglage de la lumière avec les paramètres d'ombres ajustés pour la nouvelle échelle
         const light = new THREE.DirectionalLight(0xffffff, 1.0);
-        light.position.set(100, 100, 100);
+        light.position.set(5, -90, 5); // Ces valeurs sont aussi à affiner selon la taille de votre scène
         light.castShadow = true;
-
-        // Paramètres d'ombre pour une DirectionalLight
-        light.shadow.mapSize.width = 4024;  // Résolution des ombres
-        light.shadow.mapSize.height = 4024;
+        light.shadow.mapSize.width = 8048;  // Résolution des ombres
+        light.shadow.mapSize.height = 8048;
         light.shadow.camera.near = 0.5;
-        light.shadow.camera.far = 20000;
+        light.shadow.camera.far = 2000;
         light.shadow.camera.left = -5000;
         light.shadow.camera.right = 5000;
         light.shadow.camera.top = 1000;
         light.shadow.camera.bottom = -1000;
-
-
-
-
-
+    
         this.scene.add(light);
-        this.initSky();
-
+        this.scene.add(new THREE.DirectionalLightHelper(light, 1));
+    
         window.addEventListener('resize', () => this.onWindowResize(), false);
-
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         const loader = new FBXLoader();
-
         this.loadEnvironment(loader);
-
-        this.player = new Player(this)
+        this.initSky();
+        this.player = new Player(this);
     }
+    
 
 
     initSky() {
-        const sky = new Sky();
-        sky.scale.setScalar(450000); // Taille suffisamment grande pour couvrir la scène entière
-        this.scene.add(sky);
+        this.sky = new Sky();
+        this.sky.scale.setScalar(450000);
+        this.scene.add(this.sky);
+        
+        // Assurez-vous que l'instance de Vector3 pour le soleil est créée
+        this.sun = new THREE.Vector3();
     
-        const sun = new THREE.Vector3();
+        // Vérifier si les uniformes sont bien définis
+        if (this.sky.material && this.sky.material.uniforms) {
+            console.log("Uniforms:", this.sky.material.uniforms); // Ceci loguera tous les uniformes disponibles
     
-        // Les propriétés qui influencent l'apparence du ciel
-        const effectController = {
-            turbidity: 10, // Impureté de l'atmosphère
-            rayleigh: 2, // Diffusion de la lumière par les particules de l'atmosphère
-            mieCoefficient: 0.005,
-            mieDirectionalG: 0.8,
-            elevation: 2, // Hauteur du soleil en degrés
-            azimuth: 180, // Position angulaire du soleil sur l'horizon
-            exposure: this.renderer.toneMappingExposure
-        };
+            const uniforms = this.sky.material.uniforms;
     
-        const uniforms = sky.material.uniforms;
-        uniforms['turbidity'].value = effectController.turbidity;
-        uniforms['rayleigh'].value = effectController.rayleigh;
-        uniforms['mieCoefficient'].value = effectController.mieCoefficient;
-        uniforms['mieDirectionalG'].value = effectController.mieDirectionalG;
-    
-        const phi = THREE.MathUtils.degToRad(90 - effectController.elevation);
-        const theta = THREE.MathUtils.degToRad(effectController.azimuth);
-    
-        sun.setFromSphericalCoords(1, phi, theta);
-        uniforms['sunPosition'].value.copy(sun);
-    
-        this.renderer.toneMappingExposure = effectController.exposure;
+            // Ajoutons une vérification pour chaque uniforme avant de tenter d'accéder à `.value`
+            if (uniforms.turbidity && uniforms.rayleigh && uniforms.mieCoefficient && uniforms.mieDirectionalG && uniforms.sunPosition) {
+                uniforms['turbidity'].value = 10;
+                uniforms['rayleigh'].value = 2;
+                uniforms['mieCoefficient'].value = 0.005;
+                uniforms['mieDirectionalG'].value = 0.8;
+        
+                const phi = THREE.MathUtils.degToRad(90 - 2);
+                const theta = THREE.MathUtils.degToRad(180);
+                this.sun.setFromSphericalCoords(1, phi, theta);
+                uniforms['sunPosition'].value.copy(this.sun);
+        
+                this.renderer.toneMappingExposure = this.renderer.toneMappingExposure; // Assurez-vous que c'est le bon uniforme pour l'exposition
+            } else {
+                console.error("One or more uniforms are undefined.");
+            }
+        } else {
+            console.error("Sky material or uniforms are undefined!");
+        }
     }
+    
+    
+
+
+    updateSunPosition() {
+        if (!this.sky) {
+            console.warn("Sky not initialized yet");
+            return;
+        }
+
+        const elapsed = (Date.now() - this.startTime) / 1000; // Temps écoulé en secondes
+        const daysElapsed = elapsed / 60; // Un cycle complet prend 60 secondes
+        const sunCycle = daysElapsed * 360; // 360 degrés pour un cycle complet
+
+        const phi = THREE.MathUtils.degToRad(90 - (sunCycle % 360));
+        const theta = THREE.MathUtils.degToRad(180);
+        this.sun.setFromSphericalCoords(1, phi, theta);
+        this.sky.material.uniforms['sunPosition'].value.copy(this.sun);
+    }
+
     
 
 
 
     createCameras() {
+        const scale = 0.1; // Votre facteur d'échelle actuel
+        // Ajustement des valeurs de position pour les adapter au nouveau scale tout en éloignant les caméras du corps du joueur
         const front = new THREE.Object3D();
-        front.position.set(112, 100, 600);
+        front.position.set(1.12 * scale * 5, 1.0 * scale * 5, 6.0 * scale * 5); // Multipliez par un facteur pour éloigner la caméra
         front.parent = this.player.root;
+    
         const back = new THREE.Object3D();
-        back.position.set(0, 100, -1000);
+        back.position.set(0, 200, -654); // Augmentez la distance pour la caméra arrière
         back.parent = this.player.root;
+    
         const wide = new THREE.Object3D();
-        wide.position.set(178, 139, 1665);
+        wide.position.set(1.78 * scale * 5, 1.39 * scale * 5, 16.65 * scale * 5);
         wide.parent = this.player.root;
+    
         const overhead = new THREE.Object3D();
-        overhead.position.set(0, 400, 0);
+        overhead.position.set(0, 4.0 * scale * 10, 0); // Augmentez l'altitude pour une vue d'en haut
         overhead.parent = this.player.root;
+    
         const collect = new THREE.Object3D();
-        collect.position.set(40, 82, 94);
+        collect.position.set(0.4 * scale * 5, 0.82 * scale * 5, 0.94 * scale * 5);
         collect.parent = this.player.root;
+    
         this.player.cameras = { front, back, wide, overhead, collect };
         this.activeCamera = this.player.cameras.back;
         this.controls.enabled = false;
+
+        // const gui = new dat.GUI();
+        // const camFolder = gui.addFolder('Camera');
+        // camFolder.add(back.position.set(0, 15.0 * scale * 5, -10.0 * scale * 10), 'x', -5000, 5000);
+        // camFolder.add(back.position.set(0, 15.0 * scale * 5, -10.0 * scale * 10), 'y', -5000, 5000);
+        // camFolder.add(back.position.set(0, 15.0 * scale * 5, -10.0 * scale * 10), 'z', -5000, 5000);
+        // camFolder.open();
+
     }
+    
 
 
     updateCameraPosition() {
@@ -190,7 +224,7 @@ class Game {
                 this.camera.position.lerp(worldPosition, 0.1);  
     
                 const pos = this.player.root.position.clone();
-                pos.y += 50; 
+                pos.y -= 0; 
     
                 this.camera.lookAt(pos);
             } catch (error) {
@@ -221,6 +255,7 @@ class Game {
 		let anim = this.anims.pop();
 		const game = this;
 		loader.load( `${this.assetsPath}anims/${anim}.fbx`, function( object ){
+            console.log("loaded", anim, object.animations[0]);
 			game.player.animations[anim] = object.animations[0];
 			if (game.anims.length>0){
 				game.loadNextAnim(loader);
@@ -248,7 +283,7 @@ class Game {
             game.environment = object;
             game.colliders = [];
             object.traverse(function (child) {
-                console.log(child.name);
+          //      console.log(child.name);
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
@@ -269,7 +304,7 @@ class Game {
             });
 
             object.position.set(0, 0, 0);
-            object.scale.set(1, 1, 1);
+            object.scale.set(0.05, 0.05, 0.05);
 
 
             const tloader = new THREE.CubeTextureLoader();
@@ -294,9 +329,9 @@ class Game {
             console.error("No lamp object found.");
             return;
         }
-        // Créer et configurer la SpotLight
         const spotLight = new THREE.SpotLight(0xffffff, 1.5);
-        spotLight.position.set(this.lampObject.position.x, this.lampObject.position.y + 10, this.lampObject.position.z); // Position au-dessus de la lampe
+        
+        spotLight.position.set(this.lampObject.position.x , this.lampObject.position.y + 10 , this.lampObject.position.z ); // Position au-dessus de la lampe
         spotLight.target = this.lampObject; // Cibler la lumière sur l'objet lampe
         spotLight.angle = Math.PI / 4;
         spotLight.penumbra = 0.1;
@@ -321,6 +356,7 @@ class Game {
 
     animate() {
         requestAnimationFrame(() => this.animate());
+        this.updateSunPosition();
         const dt = this.clock.getDelta();
         this.updateCameraPosition(); 
         if (this.player) {
@@ -353,6 +389,7 @@ class Player {
         loader.load(`${this.game.assetsPath}Mec.fbx`, (object) => {
             this.root = object;
             this.mixer = new THREE.AnimationMixer(object);
+            
             this.game.scene.add(object);
             object.traverse((child) => {
                 if (child.isMesh) {
@@ -360,10 +397,11 @@ class Player {
                     child.receiveShadow = true;
                 }
             });
-
+           
             if (object.animations) {
                 object.animations.forEach((animation) => {
                     this.animations[animation.name] = animation;
+                    console.log(animation.name);
                 });
             } else {
                 console.error('No animations found in the model.');
@@ -373,12 +411,14 @@ class Player {
             this.action = 'Idle';
 
             this.game.createCameras();
+
+            console.log(this.root)
         });
     }
 
     setInitialPosition() {
-        this.root.position.set(6532, -577, 15476); // //6532.9345703125, y: -577.6206970214844, z: 15476.263427734375} Si scale descendu de 1 tenter de diviser par 10
-        this.root.scale.set(0.4, 0.4, 0.4);
+        this.root.position.set(0, -100, 0); // //6532.9345703125, y: -577.6206970214844, z: 15476.263427734375} Si scale descendu de 1 tenter de diviser par 10
+        this.root.scale.set(0.02, 0.02, 0.02);
         this.root.rotation.y = Math.PI;
     }
 
@@ -445,7 +485,7 @@ class Player {
     }
 
     moveCharacter(delta) {
-        const speed = 10000.0; 
+        const speed = 100.0; 
         const rotationSpeed = Math.PI * 0.5;
         if (this.isMovingForward) {
             this.root.translateZ(speed * delta);
