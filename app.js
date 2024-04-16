@@ -5,7 +5,6 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 
 
-import * as dat from 'dat.gui';
 
 
 class Game {
@@ -25,6 +24,7 @@ class Game {
 
 
         //Sky
+        this.light;
 
         
         const game = this;
@@ -77,7 +77,7 @@ class Game {
     init() {
         this.scene = new THREE.Scene();
         // Réduction de la position de la caméra en fonction du nouveau scale
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
         // Les valeurs positionnelles sont ajustées pour correspondre à la nouvelle échelle
         this.camera.position.set(1.12, 1.0, 40.0); // Ces valeurs sont à affiner selon votre scène spécifique
 
@@ -90,25 +90,36 @@ class Game {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Utilisation de PCFSoftShadowMap pour des ombres plus douces
         this.container.appendChild(this.renderer.domElement);
+
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;  // Utilisez ACESFilmicToneMapping pour un rendu plus cinématographique
+        this.renderer.toneMappingExposure = 0.5;
+
+
+
+
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.Fog(0xaaccff, 0.1, 500);
+
+
     
         const ambient = new THREE.AmbientLight(0x87CEEB, 1);
-        this.scene.add(ambient);
+     //  this.scene.add(ambient);
     
         // Réglage de la lumière avec les paramètres d'ombres ajustés pour la nouvelle échelle
-        const light = new THREE.DirectionalLight(0xffffff, 1.0);
-        light.position.set(5, -90, 5); // Ces valeurs sont aussi à affiner selon la taille de votre scène
-        light.castShadow = true;
-        light.shadow.mapSize.width = 8048;  // Résolution des ombres
-        light.shadow.mapSize.height = 8048;
-        light.shadow.camera.near = 0.5;
-        light.shadow.camera.far = 2000;
-        light.shadow.camera.left = -5000;
-        light.shadow.camera.right = 5000;
-        light.shadow.camera.top = 1000;
-        light.shadow.camera.bottom = -1000;
-    
-        this.scene.add(light);
-        this.scene.add(new THREE.DirectionalLightHelper(light, 1));
+        this.light = new THREE.DirectionalLight(0xffffff, 1.0);
+        this.light.position.set(1000, 1000, 1000);  // Position haute pour couvrir toute la carte
+        this.light.castShadow = true;
+        this.light.shadow.mapSize.width = 8192;  // Augmentez si nécessaire pour une meilleure résolution d'ombre
+        this.light.shadow.mapSize.height = 8192;
+        this.light.shadow.camera.near = 0.1;
+        this.light.shadow.camera.far = 5000;
+        this.light.shadow.camera.left = -2000;
+        this.light.shadow.camera.right = 2000;
+        this.light.shadow.camera.top = 2000;
+        this.light.shadow.camera.bottom = -2000;
+        
+        this.scene.add(this.light);
+        this.scene.add(new THREE.DirectionalLightHelper(this.light, 100));
     
         window.addEventListener('resize', () => this.onWindowResize(), false);
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -124,54 +135,43 @@ class Game {
         this.sky = new Sky();
         this.sky.scale.setScalar(450000);
         this.scene.add(this.sky);
-        
-        // Assurez-vous que l'instance de Vector3 pour le soleil est créée
         this.sun = new THREE.Vector3();
     
-        // Vérifier si les uniformes sont bien définis
-        if (this.sky.material && this.sky.material.uniforms) {
-            console.log("Uniforms:", this.sky.material.uniforms); // Ceci loguera tous les uniformes disponibles
+        const uniforms = this.sky.material.uniforms;
+        uniforms['turbidity'].value = 10;
+        uniforms['rayleigh'].value = 2;  // Essayer de diminuer si le ciel est trop lumineux
+        uniforms['mieCoefficient'].value = 0.005;
+        uniforms['mieDirectionalG'].value = 0.8;
     
-            const uniforms = this.sky.material.uniforms;
+        const phi = THREE.MathUtils.degToRad(90 - 10);  // Ajustez cette valeur pour modifier la hauteur du soleil
+        const theta = THREE.MathUtils.degToRad(180);
+        this.sun.setFromSphericalCoords(1, phi, theta);
+        uniforms['sunPosition'].value.copy(this.sun);
     
-            // Ajoutons une vérification pour chaque uniforme avant de tenter d'accéder à `.value`
-            if (uniforms.turbidity && uniforms.rayleigh && uniforms.mieCoefficient && uniforms.mieDirectionalG && uniforms.sunPosition) {
-                uniforms['turbidity'].value = 10;
-                uniforms['rayleigh'].value = 2;
-                uniforms['mieCoefficient'].value = 0.005;
-                uniforms['mieDirectionalG'].value = 0.8;
-        
-                const phi = THREE.MathUtils.degToRad(90 - 2);
-                const theta = THREE.MathUtils.degToRad(180);
-                this.sun.setFromSphericalCoords(1, phi, theta);
-                uniforms['sunPosition'].value.copy(this.sun);
-        
-                this.renderer.toneMappingExposure = this.renderer.toneMappingExposure; // Assurez-vous que c'est le bon uniforme pour l'exposition
-            } else {
-                console.error("One or more uniforms are undefined.");
-            }
-        } else {
-            console.error("Sky material or uniforms are undefined!");
-        }
+        this.renderer.toneMappingExposure = 0.5;  // Ajustez pour l'exposition globale, réduisez la nuit
     }
     
     
-
+    
 
     updateSunPosition() {
-        if (!this.sky) {
-            console.warn("Sky not initialized yet");
-            return;
-        }
-
-        const elapsed = (Date.now() - this.startTime) / 1000; // Temps écoulé en secondes
-        const daysElapsed = elapsed / 60; // Un cycle complet prend 60 secondes
-        const sunCycle = daysElapsed * 360; // 360 degrés pour un cycle complet
-
-        const phi = THREE.MathUtils.degToRad(90 - (sunCycle % 360));
-        const theta = THREE.MathUtils.degToRad(180);
+        const elapsed = (Date.now() - this.startTime) / 1000;  // Temps écoulé en secondes
+        const daysElapsed = elapsed / 60;  // Un cycle complet de jour (changez cela selon la durée d'un jour dans votre jeu)
+        const sunCycle = daysElapsed * 360;  // 360 degrés pour un cycle complet
+    
+        const phi = THREE.MathUtils.degToRad(90 - (sunCycle % 360));  // 90 degrés moins la position en degrés du soleil dans le cycle
+        const theta = THREE.MathUtils.degToRad(180);  // Angle pour le cycle est-ouest, ajustez selon vos besoins
+    
+        // Mettre à jour la position du soleil dans le shader du ciel
         this.sun.setFromSphericalCoords(1, phi, theta);
         this.sky.material.uniforms['sunPosition'].value.copy(this.sun);
+    
+        // Mettre à jour la position de la lumière directionnelle pour qu'elle corresponde à celle du soleil
+        this.light.position.set(
+            this.sun.x * 4000,  // Multipliez pour s'adapter à la taille de votre scène
+            this.sun.y * 4000,
+            this.sun.z * 4000
+        );
     }
 
     
