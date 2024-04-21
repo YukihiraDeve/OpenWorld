@@ -152,6 +152,7 @@ class Game {
     }
     
     //te    
+    fd
     // Fonction pour mettre à jour la position du soleil et de la lumière directionnelle
     
 
